@@ -10,6 +10,15 @@ const { Header, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
+const sortQuestions = (questions) => {
+  return [...questions].sort((a, b) => {
+    if (b.likes !== a.likes) {
+      return b.likes - a.likes;
+    }
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+};
+
 const UserPage = () => {
   const { roomId } = useParams();
   const [room, setRoom] = useState(null);
@@ -21,7 +30,7 @@ const UserPage = () => {
     try {
       const response = await getQuestions(roomId, 'likes', 'desc');
       if (response.success) {
-        setQuestions(response.questions);
+        setQuestions(sortQuestions(response.questions));
       }
     } catch (error) {
       console.error('获取问题列表失败:', error);
@@ -47,8 +56,12 @@ const UserPage = () => {
       
       const handleQuestionCreated = (question) => {
         setQuestions(prev => {
+          const exists = prev.some(q => q.id === question.id);
+          if (exists) {
+            return prev;
+          }
           const updated = [...prev, question];
-          return updated.sort((a, b) => b.likes - a.likes);
+          return sortQuestions(updated);
         });
       };
       
@@ -57,7 +70,7 @@ const UserPage = () => {
           const updated = prev.map(q => 
             q.id === updatedQuestion.id ? updatedQuestion : q
           );
-          return updated.sort((a, b) => b.likes - a.likes);
+          return sortQuestions(updated);
         });
       };
       
@@ -84,7 +97,6 @@ const UserPage = () => {
       if (response.success) {
         message.success('提问成功！');
         form.resetFields();
-        fetchQuestions();
       } else {
         message.error('提问失败');
       }
