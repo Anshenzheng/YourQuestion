@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify
 from flask_cors import cross_origin
 import qrcode
 from app import db, socketio
-from app.models import Room, Question
+from app.models import Room, Question, Like
 from datetime import datetime
 
 main = Blueprint('main', __name__)
@@ -139,14 +139,64 @@ def like_question(question_id):
     if not question:
         return jsonify({'success': False, 'error': '问题不存在'}), 404
     
-    question.likes += 1
-    db.session.commit()
+    data = request.get_json()
+    user_id = data.get('user_id')
     
-    socketio.emit('question_updated', question.to_dict(), room=question.room_id)
+    if not user_id:
+        return jsonify({'success': False, 'error': '用户ID不能为空'}), 400
+    
+    existing_like = Like.query.filter_by(question_id=question_id, user_id=user_id).first()
+    if existing_like:
+        return jsonify({
+            'success': False,
+            'error': '您已经点赞过了',
+            'question': question.to_dict(),
+            'already_liked': True
+        }), 400
+    
+    try:
+        new_like = Like(question_id=question_id, user_id=user_id)
+        db.session.add(new_like)
+        question.likes += 1
+        db.session.commit()
+        
+        socketio.emit('question_updated', question.to_dict(), room=question.room_id)
+        
+        return jsonify({
+            'success': True,
+            'question': question.to_dict(),
+            'already_liked': False
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': '点赞失败'}), 500
+
+@main.route('/api/rooms/<room_id>/user-likes', methods=['POST'])
+@cross_origin(supports_credentials=True)
+def get_user_likes(room_id):
+    room = Room.query.get(room_id)
+    if not room:
+        return jsonify({'success': False, 'error': '房间不存在'}), 404
+    
+    data = request.get_json()
+    user_id = data.get('user_id')
+    
+    if not user_id:
+        return jsonify({'success': True, 'liked_question_ids': []})
+    
+    question_ids = db.session.query(Question.id).filter_by(room_id=room_id).all()
+    question_id_list = [qid[0] for qid in question_ids]
+    
+    likes = Like.query.filter(
+        Like.question_id.in_(question_id_list),
+        Like.user_id == user_id
+    ).all()
+    
+    liked_question_ids = [like.question_id for like in likes]
     
     return jsonify({
         'success': True,
-        'question': question.to_dict()
+        'liked_question_ids': liked_question_ids
     })
 
 @main.route('/api/questions/<question_id>/answer', methods=['POST'])

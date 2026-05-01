@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Layout, Card, Form, Input, Button, Typography, Space, message, Divider, Radio } from 'antd';
 import { MessageOutlined } from '@ant-design/icons';
-import { getRoom, getQuestions, createQuestion, likeQuestion } from '../services/api';
+import { getRoom, getQuestions, createQuestion, likeQuestion, getUserLikes } from '../services/api';
 import socketService from '../services/socket';
-import QuestionList from '../components/QuestionList';
+import likeService from '../services/likeService';
+import QuestionCard from '../components/QuestionCard';
 
 const { Header, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -25,6 +26,8 @@ const UserPage = () => {
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
+  const [userId, setUserId] = useState(null);
+  const [likedQuestionIds, setLikedQuestionIds] = useState([]);
 
   const fetchQuestions = useCallback(async () => {
     try {
@@ -37,7 +40,29 @@ const UserPage = () => {
     }
   }, [roomId]);
 
+  const fetchUserLikes = useCallback(async (uid) => {
+    try {
+      const localLiked = likeService.getLikedQuestions();
+      
+      const response = await getUserLikes(roomId, uid);
+      if (response.success) {
+        const serverLiked = response.liked_question_ids || [];
+        const allLiked = [...new Set([...localLiked, ...serverLiked])];
+        setLikedQuestionIds(allLiked);
+      } else {
+        setLikedQuestionIds(localLiked);
+      }
+    } catch (error) {
+      console.error('获取用户点赞记录失败:', error);
+      const localLiked = likeService.getLikedQuestions();
+      setLikedQuestionIds(localLiked);
+    }
+  }, [roomId]);
+
   useEffect(() => {
+    const uid = likeService.getUserId();
+    setUserId(uid);
+
     const init = async () => {
       try {
         const roomResponse = await getRoom(roomId);
@@ -49,7 +74,8 @@ const UserPage = () => {
         message.error('房间不存在或已过期');
       }
       
-      fetchQuestions();
+      await fetchQuestions();
+      await fetchUserLikes(uid);
       
       socketService.connect();
       socketService.joinRoom(roomId);
@@ -84,7 +110,7 @@ const UserPage = () => {
     };
     
     init();
-  }, [roomId, fetchQuestions]);
+  }, [roomId, fetchQuestions, fetchUserLikes]);
 
   const handleSubmitQuestion = async (values) => {
     setLoading(true);
@@ -109,12 +135,38 @@ const UserPage = () => {
   };
 
   const handleLike = async (questionId) => {
+    if (likedQuestionIds.includes(questionId)) {
+      message.info('您已经点赞过了');
+      return;
+    }
+
     try {
-      await likeQuestion(questionId);
-      message.success('点赞成功！');
+      const response = await likeQuestion(questionId, userId);
+      
+      if (response.success) {
+        likeService.addLike(questionId);
+        setLikedQuestionIds(prev => [...prev, questionId]);
+        message.success('点赞成功！');
+      } else if (response.already_liked) {
+        likeService.addLike(questionId);
+        setLikedQuestionIds(prev => 
+          prev.includes(questionId) ? prev : [...prev, questionId]
+        );
+        message.info('您已经点赞过了');
+      } else {
+        message.error(response.error || '点赞失败');
+      }
     } catch (error) {
       console.error('点赞失败:', error);
-      message.error('点赞失败');
+      if (error.response && error.response.data && error.response.data.already_liked) {
+        likeService.addLike(questionId);
+        setLikedQuestionIds(prev => 
+          prev.includes(questionId) ? prev : [...prev, questionId]
+        );
+        message.info('您已经点赞过了');
+      } else {
+        message.error('点赞失败');
+      }
     }
   };
 
@@ -207,12 +259,21 @@ const UserPage = () => {
           <Text type="secondary">问题列表（按点赞数排序）</Text>
         </Divider>
 
-        <QuestionList
-          questions={questions}
-          loading={false}
-          onLike={handleLike}
-          showAnswer={true}
-        />
+        {questions.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <Text type="secondary">暂无问题，快来提问吧！</Text>
+          </div>
+        ) : (
+          questions.map(question => (
+            <QuestionCard
+              key={question.id}
+              question={question}
+              onLike={handleLike}
+              showAnswer={true}
+              disabledLike={likedQuestionIds.includes(question.id)}
+            />
+          ))
+        )}
       </Content>
     </Layout>
   );
