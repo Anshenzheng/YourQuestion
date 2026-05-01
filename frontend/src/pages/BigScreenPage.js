@@ -8,6 +8,15 @@ import socketService from '../services/socket';
 const { Header, Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
 
+const sortQuestions = (questions) => {
+  return [...questions].sort((a, b) => {
+    if (b.likes !== a.likes) {
+      return b.likes - a.likes;
+    }
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+};
+
 const BigScreenPage = () => {
   const { roomId } = useParams();
   const [room, setRoom] = useState(null);
@@ -21,7 +30,7 @@ const BigScreenPage = () => {
     try {
       const response = await getQuestions(roomId, 'likes', 'desc');
       if (response.success) {
-        setQuestions(response.questions);
+        setQuestions(sortQuestions(response.questions));
       }
     } catch (error) {
       console.error('获取问题列表失败:', error);
@@ -48,8 +57,12 @@ const BigScreenPage = () => {
       
       const handleQuestionCreated = (question) => {
         setQuestions(prev => {
+          const exists = prev.some(q => q.id === question.id);
+          if (exists) {
+            return prev;
+          }
           const updated = [...prev, question];
-          return updated.sort((a, b) => b.likes - a.likes);
+          return sortQuestions(updated);
         });
       };
       
@@ -58,7 +71,7 @@ const BigScreenPage = () => {
           const updated = prev.map(q => 
             q.id === updatedQuestion.id ? updatedQuestion : q
           );
-          return updated.sort((a, b) => b.likes - a.likes);
+          return sortQuestions(updated);
         });
       };
       
