@@ -25,6 +25,7 @@ class Question(db.Model):
     is_answered = db.Column(db.Boolean, default=False)
     answer = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user_likes = db.relationship('Like', backref='question', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
         return {
@@ -35,5 +36,23 @@ class Question(db.Model):
             'likes': self.likes,
             'is_answered': self.is_answered,
             'answer': self.answer,
+            'created_at': self.created_at.isoformat()
+        }
+
+class Like(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=False)
+    user_id = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        db.UniqueConstraint('question_id', 'user_id', name='unique_user_question_like'),
+    )
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'question_id': self.question_id,
+            'user_id': self.user_id,
             'created_at': self.created_at.isoformat()
         }

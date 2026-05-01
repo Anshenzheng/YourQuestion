@@ -31,8 +31,13 @@ export const createQuestion = async (roomId, content, nickname) => {
   return response.data;
 };
 
-export const likeQuestion = async (questionId) => {
-  const response = await api.post(`/questions/${questionId}/like`);
+export const likeQuestion = async (questionId, userId) => {
+  const response = await api.post(`/questions/${questionId}/like`, { user_id: userId });
+  return response.data;
+};
+
+export const getUserLikes = async (roomId, userId) => {
+  const response = await api.post(`/rooms/${roomId}/user-likes`, { user_id: userId });
   return response.data;
 };
 
